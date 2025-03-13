@@ -11,10 +11,25 @@ by Jeffery Myers is marked with CC0 1.0. To view a copy of this license, visit h
 #include "rlgl.h"
 #include "raymath.h" 
 #include "resource_dir.h"	// utility header for SearchAndSetResourceDir
+#include <stdio.h>
 
+struct Settings
+{
+	int resX;
+	int resY;
+	bool fullscreen; //no implementado aún
+	bool VSync;
+	bool MSAA;
+	float CameraSpeed;
+	float MouseSensitivity;
+	bool MouseInverted;
+};
+
+void LoadSettings(struct Settings*);
 void DrawBasicSphere(Color color);
 void DrawAxes(float s);
 void DrawTexturedCube(Texture tex, float size, float x, float y, float z);
+
 
 int main ()
 {
@@ -34,25 +49,18 @@ int main ()
 	Image imgGradient = GenImageGradientLinear(GetScreenWidth(), GetScreenHeight(), 0, SKYBLUE, BEIGE);
 	Texture textureGradient = LoadTextureFromImage(imgGradient);
 
-	Matrix customProjection = {
-	1.0f, 0.0f, 0.0f, 0.0f,
-	0.0f, 1.0f, 0.0f, 0.0f,
-	0.0f, 0.0f, 1.0f, 0.0f,
-	0.0f, 0.0f, 0.0f, 1.0f
-	};
-
 	Camera3D cam={ 0 };
 	cam.fovy = 60;
 	cam.projection = CAMERA_PERSPECTIVE;
-	cam.position = (Vector3){ 0,1, 5 };
+	cam.position = (Vector3){ 2,0,0};
 	cam.up = (Vector3){ 0.0f, 1.0f, 0.0f };
-	Vector3 camDirection = { 0,0,-1 };
+	Vector3 camDirection = { -1,0, 0};
 	//Vector ortogonal a la direccion de la camara
-	Vector3 camDirectionRight = { 1,0,0 };
+	Vector3 camDirectionRight = { 0,0,0 };
+	Quaternion camRot = QuaternionFromVector3ToVector3(camDirection, (Vector3) { -1, 0, 0 });
 
 	//variables de control de camara
-	float camSpeed = 1;
-
+	float camSpeed = 5;
 
 	float planetRot = 0;
 	float moonRot = 0;
@@ -69,7 +77,6 @@ int main ()
 	// game loop
 	while (!WindowShouldClose())		// run the loop untill the user presses ESCAPE or presses the Close button on the window
 	{
-		camDirectionRight = Vector3Normalize(Vector3CrossProduct(camDirection, cam.up));
 		//Procesamiento de los inputs
 		if (IsKeyPressed(KEY_R))
 		{
@@ -99,75 +106,65 @@ int main ()
 		{
 			cam.position.y += -1.0f * GetFrameTime();
 		}
-		Vector2 mousedelta = GetMouseDelta();
-		Matrix Mrot = MatrixRotateXYZ((Vector3) { mousedelta.y * -0.005f, mousedelta.x * -0.005f, 0 });
-		camDirection = Vector3Transform(camDirection, Mrot);
+		if (GetMouseWheelMove() != 0)
+		{
+			cam.fovy -= 5*GetMouseWheelMove();
+			cam.fovy = Clamp(cam.fovy, 1, 160);
+		}
 
+		//procesamiento de la camara
+		camDirectionRight = Vector3Normalize(Vector3CrossProduct(camDirection, cam.up));
+
+		Vector2 mousedelta = GetMouseDelta();
+		//primero el pitch, es decir, rotar en el eje X
+		float pitch = -mousedelta.y * 0.1 * GetFrameTime();
+		float angle = Vector3Angle(camDirection, cam.up);
+		//printf("pitch, angle: %f,%f\n", pitch,angle);
+		if (angle - pitch < 0.1 || angle - pitch > 3.1)
+		{
+			pitch = 0;
+		}
+		camDirection = Vector3RotateByAxisAngle(camDirection, camDirectionRight, pitch);
+		//luego el yaw, es decir, rotar en el eje Y
+		float yaw = -mousedelta.x * 0.1 * GetFrameTime();
 		cam.target = Vector3Add(cam.position, camDirection);
-			
+		camDirection = Vector3RotateByAxisAngle(camDirection, cam.up, yaw);
+		cam.target = Vector3Add(cam.position, camDirection);
+
 		// drawing
 		BeginDrawing();
 		//BeginTextureMode(rendertarget);
 		ClearBackground(BLACK);
 		//skybox
-
 		DrawTexture(textureGradient, 0, 0, WHITE);
-
 		BeginMode3D(cam);
+		DrawSphere(camDirection, 0.05, RED);
 		DrawGrid(15, 0.5f);
 
-		DrawAxes(1.0f);
-		//DrawCube((Vector3){ 0,0,0 }, 1, 1, 1, RED);
-
-		/*rlBegin(RL_TRIANGLES);
-		rlColor4ub(120, 120, 240, 255);
-		rlVertex3f(0, 0, 0);
-		rlVertex3f(0, 3, 0);
-		rlVertex3f(1, 0, 0);
-		rlEnd();*/
-
-
-		//planetRot += 6 * GetFrameTime();
-		//moonRot += 360 * GetFrameTime();
-		//rlPushMatrix();
-		//	rlScalef(0.4f, 0.4f, 0.4f);
-		//	DrawBasicSphere(GOLD);
-		//rlPopMatrix();
-		//rlPushMatrix();
-		//	rlRotatef(planetRot, 0,1,0);
-		//	rlTranslatef(1, 0, 0);
-		//	rlScalef(0.1f, 0.1f, 0.1f);
-		//	DrawBasicSphere(BLUE);
-		//	rlPushMatrix();
-		//		rlRotatef(moonRot, 0, 1, 0);
-		//		rlTranslatef(2, 0, 0);
-		//		rlScalef(0.3f, 0.3f, 0.3f);
-		//		DrawBasicSphere(GRAY);
-		//	rlPopMatrix();
-		//rlPopMatrix();
-
-		rlSetTexture(texCrate.id);
-		rlBegin(RL_QUADS);
-		rlColor4ub(255, 255, 255, 255);
-		rlTexCoord2f(0, 1);
-		rlVertex3f(0, 0, 0);
-		rlTexCoord2f(1, 1);
-		rlVertex3f(1, 0, 0);
-		rlTexCoord2f(1, 0);
-		rlVertex3f(1, 1, 0);
-		rlTexCoord2f(0, 0);
-		rlVertex3f(0, 1 , 0);
-		rlEnd();
 		DrawTexturedCube(texCrate, 1, 0, 0, 0);
 		EndMode3D();
 
 		//dibujar hud
 		sprintf(labelbuffer, "Camara X:%f",cam.position.x);
-		DrawText(labelbuffer, 20, 20, 12, YELLOW);
+		DrawText(labelbuffer, 20, 20, 14, YELLOW);
 		sprintf(labelbuffer, "Camara Y:%f", cam.position.y);
-		DrawText(labelbuffer, 20, 32, 12, YELLOW);
+		DrawText(labelbuffer, 20, 35, 14, YELLOW);
 		sprintf(labelbuffer, "Camara Z:%f", cam.position.z);
-		DrawText(labelbuffer, 20, 44, 12, YELLOW);
+		DrawText(labelbuffer, 20, 50, 14, YELLOW);
+
+		sprintf(labelbuffer, "Camara Dir X:%f", camDirection.x);
+		DrawText(labelbuffer, 20, 75, 14, RED);
+		sprintf(labelbuffer, "Camara Dir Y:%f", camDirection.y);
+		DrawText(labelbuffer, 20, 90, 14, GREEN);
+		sprintf(labelbuffer, "Camara Dir Z:%f", camDirection.z);
+		DrawText(labelbuffer, 20, 105, 14, BLUE);
+
+		sprintf(labelbuffer, "CamRight X:%f", camDirectionRight.x);
+		DrawText(labelbuffer, 20, 120, 14, RED);
+		sprintf(labelbuffer, "CamRight Y:%f", camDirectionRight.y);
+		DrawText(labelbuffer, 20, 135, 14, GREEN);
+		sprintf(labelbuffer, "CamRight Z:%f", camDirectionRight.z);
+		DrawText(labelbuffer, 20, 150, 14, BLUE);
 
 		sprintf(labelbuffer, "FPS: %.1f", 1 / GetFrameTime());
 		DrawText(labelbuffer, GetScreenWidth()-100, 20,16, DARKGREEN);
@@ -324,5 +321,46 @@ void DrawBasicSphere(Color color)
 				sinf(DEG2RAD * (270 + (180 / (rings + 1)) * (i + 1))),
 				cosf(DEG2RAD * (270 + (180 / (rings + 1)) * (i + 1))) * cosf(DEG2RAD * ((j + 1) * 360 / slices)));
 		}
+	}
+}
+
+
+void LoadSettings(struct Settings *cfg)
+{
+	//defaults
+	cfg->resX = 1024;
+	cfg->resY = 768;
+	cfg->fullscreen = false;
+	cfg->VSync = true;
+	cfg->MSAA = false;
+	cfg->CameraSpeed = 3;
+	cfg->MouseSensitivity = 0.1;
+	cfg->MouseInverted = false;
+
+	char line[100] = { 0 };
+	FILE* f = fopen("settings.ini", "r");
+	if (f == NULL)
+	{
+		printf("No se pudo abrir el archivo de configuracion\n");
+		return;
+	}
+	else
+	{
+		fgets(line, 16, f);
+		printf("Leido: %s\n", line);
+		char* token;
+		char* copy = (char*)malloc(strlen(line) + 1);
+		strcpy(copy, line);
+		token = strtok(copy, "X");
+		if (token != NULL)
+			printf("Leido: %s\n", token);
+		else
+			printf("Token nulo\n");
+
+		/*if (strcmp(token, "resX") == 0)
+		{
+			token = strtok(NULL, "=");
+			cfg->resX = atoi(token);
+		}*/
 	}
 }
